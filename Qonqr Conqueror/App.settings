@@ -1,0 +1,18 @@
+<?xml version='1.0' encoding='utf-8'?>
+<SettingsFile xmlns="http://schemas.microsoft.com/VisualStudio/2004/01/settings" CurrentProfile="(Default)" GeneratedClassNamespace="Qonqr" GeneratedClassName="App">
+  <Profiles />
+  <Settings>
+    <Setting Name="username" Type="System.String" Scope="User">
+      <Value Profile="(Default)" />
+    </Setting>
+    <Setting Name="password" Type="System.String" Scope="User">
+      <Value Profile="(Default)" />
+    </Setting>
+    <Setting Name="lattitude" Type="System.String" Scope="User">
+      <Value Profile="(Default)">47.6469383239746</Value>
+    </Setting>
+    <Setting Name="longitude" Type="System.String" Scope="User">
+      <Value Profile="(Default)">-122.133738517761</Value>
+    </Setting>
+  </Settings>
+</SettingsFile>
