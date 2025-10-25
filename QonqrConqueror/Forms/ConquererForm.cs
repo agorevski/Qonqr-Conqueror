@@ -18,8 +18,7 @@ namespace Qonqr
         bool _fullBaseExists = false;
         bool _canHarvestBase = false;
         bool _busy = false;
-        double _botCount = 0;
-        double _energyCount = 0;
+        DateTime _lastLaunchTime = DateTime.MinValue;
         bool _successfullyLoggedIn = false;
 
         #endregion
@@ -117,6 +116,53 @@ namespace Qonqr
 
         private async void harvestButton_Click(object sender, EventArgs e)
         {
+            await PerformHarvestAsync();
+        }
+
+        private void autoharvest_Checked(object sender, EventArgs e)
+        {
+            tenMinuteUpdateTimer.Enabled = autoHarvestCheckbox.Checked;
+        }
+
+
+        private async void tenMinuteUpdateTimer_Tick(object sender, EventArgs e)
+        {
+            if (!_successfullyLoggedIn || _busy)
+            {
+                return; // skip if we are not logged in or already busy doing something else
+            }
+
+            // Disable timer during execution to prevent overlap
+            tenMinuteUpdateTimer.Enabled = false;
+
+            try
+            {
+                await UpdateStatsAsync();
+                await LoadBasesAsync();
+
+                // if a base is full then harvest all
+                if (autoHarvestCheckbox.Checked && _fullBaseExists)
+                {
+                    await PerformHarvestAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                // Log error but don't stop the timer
+                baseStatusLabel.Text = $"Update Error: {ex.Message}";
+            }
+            finally
+            {
+                // Re-enable timer after completion
+                tenMinuteUpdateTimer.Enabled = autoHarvestCheckbox.Checked;
+            }
+        }
+
+        /// <summary>
+        /// Performs harvest operation - extracted from harvestButton_Click for reusability
+        /// </summary>
+        private async Task PerformHarvestAsync()
+        {
             LockScreen();
             
             try
@@ -131,35 +177,6 @@ namespace Qonqr
             finally
             {
                 UnlockScreen();
-            }
-        }
-
-        private void autoharvest_Checked(object sender, EventArgs e)
-        {
-            tenMinuteUpdateTimer.Enabled = autoHarvestCheckbox.Checked;
-        }
-
-
-        private async void tenMinuteUpdateTimer_Tick(object sender, EventArgs e)
-        {
-            if (_successfullyLoggedIn && !_busy) // skip if we are not logged in or already busy doing something else
-            {
-                try
-                {
-                    await UpdateStatsAsync();
-                    await LoadBasesAsync();
-
-                    // if a base is full then harvest all
-                    if (autoHarvestCheckbox.Checked && _fullBaseExists)
-                    {
-                        harvestButton_Click(null, new EventArgs());
-                    }
-                }
-                catch (Exception ex)
-                {
-                    // Log error but don't stop the timer
-                    baseStatusLabel.Text = $"Update Error: {ex.Message}";
-                }
             }
         }
 
@@ -253,38 +270,7 @@ namespace Qonqr
         {
             if (_successfullyLoggedIn && !_busy) // skip if we are not logged in or already busy doing something else
             {
-                _botCount += _qonqrManager.Launch.BotsPerSecond;
-                _energyCount += _qonqrManager.Launch.EnergyPerSecond;
-
-                botsRegenRateLabel.Text = string.Format("Bots: {0} / Regeneration Rate: {1}", _botCount, _qonqrManager.Launch.BotsPerSecond);
-
-                if (_botCount != 0)
-                {
-                    double botProgress = _botCount;
-                    double energyProgress = _energyCount;
-
-                    botsProgressBar.Maximum = int.Parse(_qonqrManager.Statistics.BotCapacity);
-                    energyProgressBar.Maximum = int.Parse(_qonqrManager.Statistics.EnergyCapacity);
-
-                    // don't let our counting exceed what the progress bar allows
-                    if (botProgress > botsProgressBar.Maximum)
-                        botProgress = botsProgressBar.Maximum;
-
-                    if (energyProgress > energyProgressBar.Maximum)
-                        energyProgress = energyProgressBar.Maximum;
-
-                    botsProgressBar.Value = (int)botProgress;
-                    energyProgressBar.Value = (int)energyProgress;
-
-                    if (botProgress == botsProgressBar.Maximum && energyProgress == energyProgressBar.Maximum && autoLaunchCheckBox.Checked)
-                    {
-                        botProgress = 0;
-                        energyProgress = 0;
-
-                        launchBotsButton_Click(null, new EventArgs());
-                    }
-
-                }
+                UpdateResourceDisplays();
             }
         }
         
@@ -533,8 +519,54 @@ namespace Qonqr
             {
                 launchStatusLabel.Text = "Launch Successful!";
 
-                _botCount = _qonqrManager.Launch.BotsAfterLaunch;
-                _energyCount = _qonqrManager.Launch.EnergyAfterLaunch;
+                // Track launch time for calculated regeneration
+                _lastLaunchTime = DateTime.Now;
+            }
+        }
+
+        /// <summary>
+        /// Updates resource displays using calculated regeneration instead of polling
+        /// </summary>
+        private void UpdateResourceDisplays()
+        {
+            if (!int.TryParse(_qonqrManager.Statistics.BotCapacity, out int botCapacity) || botCapacity == 0)
+            {
+                return; // Not initialized yet
+            }
+
+            if (!int.TryParse(_qonqrManager.Statistics.EnergyCapacity, out int energyCapacity) || energyCapacity == 0)
+            {
+                return; // Not initialized yet
+            }
+
+            // Calculate current resources based on time elapsed since last launch
+            int currentBots = ResourceCalculator.CalculateCurrentBots(
+                _qonqrManager.Launch.BotsAfterLaunch,
+                _qonqrManager.Launch.BotsPerSecond,
+                _lastLaunchTime,
+                botCapacity
+            );
+
+            int currentEnergy = ResourceCalculator.CalculateCurrentEnergy(
+                _qonqrManager.Launch.EnergyAfterLaunch,
+                _qonqrManager.Launch.EnergyPerSecond,
+                _lastLaunchTime,
+                energyCapacity
+            );
+
+            // Update UI
+            botsRegenRateLabel.Text = $"Bots: {currentBots} / Regeneration Rate: {_qonqrManager.Launch.BotsPerSecond}";
+            
+            botsProgressBar.Maximum = botCapacity;
+            energyProgressBar.Maximum = energyCapacity;
+            botsProgressBar.Value = currentBots;
+            energyProgressBar.Value = currentEnergy;
+
+            // Check for auto-launch when resources are full
+            if (autoLaunchCheckBox.Checked && 
+                ResourceCalculator.AreResourcesFull(currentBots, botCapacity, currentEnergy, energyCapacity))
+            {
+                launchBotsButton_Click(null, EventArgs.Empty);
             }
         }
 

@@ -1,29 +1,34 @@
 ﻿using System.Net;
-using System.Net.Cache;
+using System.Net.Http;
+using System.Text;
 using System.Text.Json;
 
 namespace Qonqr;
 
-public class ApiCall
+public class ApiCall : IDisposable
     {
-        private enum RequestType
-        {
-            GET,
-            POST,
-        }
-
-        private const string USER_AGENT = "User-Agent: QONQR/1.7.4642.40034 (WindowsPhone 7.10.-1; NOKIA Lumia 900; Unknown)";
+        private const string USER_AGENT = "QONQR/1.7.4642.40034 (WindowsPhone 7.10.-1; NOKIA Lumia 900; Unknown)";
         private const string CLIENT_APP_VERSION = "1.7.4642.40034";
         private const string REFERER = @"file:///Applications/Install/DFE7FCEF-4904-4C9A-8423-927A8D5DED18/Install/";
+        private const string BASE_URL = "https://api.qonqr.com/v1";
+        
+        private readonly HttpClient _httpClient;
         private string _username;
         private string _password;
         private string _deviceId;
 
         /// <summary>
-        /// The WebRequest constructor that will be used to construct all web requests
+        /// Constructor that initializes the HttpClient with default headers
         /// </summary>
         public ApiCall()
-        { }
+        {
+            _httpClient = new HttpClient();
+            _httpClient.DefaultRequestHeaders.Add("User-Agent", USER_AGENT);
+            _httpClient.DefaultRequestHeaders.Add("Accept-Encoding", "identity");
+            _httpClient.DefaultRequestHeaders.Add("Referer", REFERER);
+            _httpClient.DefaultRequestHeaders.Add("ClientAppVersion", CLIENT_APP_VERSION);
+            _httpClient.DefaultRequestHeaders.Add("DeviceType", "3");
+        }
 
         /// <summary>
         /// The method used to log into the QONQR service
@@ -41,62 +46,29 @@ public class ApiCall
 
             DateTime now = DateTime.Now;
             string ampm = now.Hour > 12 ? "AM" : "PM";
-            string loginUrl = string.Format(@"https://api.qonqr.com/v1/Login?nocache=" +
-            "{0}%2F{1}%2F{2}%20{3}%3A{4}%3A{5}%20{6}", now.Month, now.Day, now.Year,
-            now.Hour, now.Minute, now.Second, ampm);
+            string loginUrl = $"{BASE_URL}/Login?nocache={now.Month}%2F{now.Day}%2F{now.Year}%20{now.Hour}%3A{now.Minute}%3A{now.Second}%20{ampm}";
 
-            HttpWebRequest request = CreateBasicRequest(RequestType.GET, loginUrl);
-            request.Headers = SetHeaders(string.Empty, string.Empty);
-            string responseBody = await SendRequestGetResponseAsync(RequestType.GET, request, string.Empty, cancellationToken);
-            if (responseBody == string.Empty)
+            using var request = new HttpRequestMessage(HttpMethod.Get, loginUrl);
+            AddAuthHeaders(request, string.Empty, string.Empty);
+
+            string responseBody = await SendHttpRequestAsync(request, cancellationToken);
+            if (string.IsNullOrEmpty(responseBody))
             {
                 return null;
             }
 
             return JsonSerializer.Deserialize<LoginApiCall>(responseBody);
-
-            //string name = FindPropertyValueInBody(responseBody, "User");
-            //string level = FindPropertyValueInBody(responseBody, "Level");
-            //int curXP = 0;
-            //int.TryParse(FindPropertyValueInBody(responseBody, "Experience"), out curXP);
-            //int XP_UpperBound = 0;
-            //int.TryParse(FindPropertyValueInBody(responseBody, "LevelXpUpperBound"), out XP_UpperBound);
-            //int expLeft = XP_UpperBound - curXP;
-
-            //LoginInfo info = new LoginInfo()
-            //{
-            //    BotCapacity = FindPropertyValueInBody(responseBody, "BotCapacity"),
-            //    BotCountAfterLastDeployment = FindPropertyValueInBody(responseBody, "BotCountAfterLastDeployment"),
-            //    BotsPerSecond = FindPropertyValueInBody(responseBody, "BotsPerSecond"),
-            //    Codename = FindPropertyValueInBody(responseBody, "Codename"),
-            //    EnergyCapacity = FindPropertyValueInBody(responseBody, "EnergyCapacity"),
-            //    EnergyCountAfterLastDeployment = FindPropertyValueInBody(responseBody, "EnergyCountAfterLastDeployment"),
-            //    EnergyPerSecond = FindPropertyValueInBody(responseBody, "EnergyPerSecond"),
-            //    Experience = FindPropertyValueInBody(responseBody, "Experience"),
-            //    FactionId = FindPropertyValueInBody(responseBody, "FactionId"),
-            //    LastBotDeployTimeUTC = FindPropertyValueInBody(responseBody, "LastBotDeployTimeUTC"),
-            //    LastEnergyDeployTimeUTC = FindPropertyValueInBody(responseBody, "LastEnergyDeployTimeUTC"),
-            //    Level = FindPropertyValueInBody(responseBody, "Level"),
-            //    LevelXpUpperBound = FindPropertyValueInBody(responseBody, "LevelXpUpperBound"),
-            //    PlayerId = FindPropertyValueInBody(responseBody, "PlayerId"),
-            //    Qredits = FindPropertyValueInBody(responseBody, "Qredits"),
-            //    ServerTimeUTC = FindPropertyValueInBody(responseBody, "ServerTimeUTC"),
-            //    AllowPublicMessages = FindPropertyValueInBody(responseBody, "AllowPublicMessages"),
-            //    ImageUrl = FindPropertyValueInBody(responseBody, "ImageUrl"),
-            //    TotalZonesCaptured = FindPropertyValueInBody(responseBody, "TotalZonesCaptured"),
-            //    ZonesCurrentlyLeading = FindPropertyValueInBody(responseBody, "ZonesCurrentlyLeading"),
-            //};
-            //return info;
         }
 
         public async Task<FortsApiCall> FortsAsync(string latitude, string longitude, CancellationToken cancellationToken = default)
         {
-            string fortsUrl = string.Format(@"https://api.qonqr.com/v1/Players/Forts");
+            string fortsUrl = $"{BASE_URL}/Players/Forts";
 
-            HttpWebRequest request = CreateBasicRequest(RequestType.POST, fortsUrl);
-            request.Headers = SetHeaders(latitude, longitude);
-            string responseBody = await SendRequestGetResponseAsync(RequestType.POST, request, string.Empty, cancellationToken);
-            if (responseBody == string.Empty)
+            using var request = new HttpRequestMessage(HttpMethod.Post, fortsUrl);
+            AddAuthHeaders(request, latitude, longitude);
+
+            string responseBody = await SendHttpRequestAsync(request, cancellationToken);
+            if (string.IsNullOrEmpty(responseBody))
             {
                 return null;
             }
@@ -106,12 +78,13 @@ public class ApiCall
 
         public async Task<HarvestAll> HarvestAllAsync(string latitude, string longitude, CancellationToken cancellationToken = default)
         {
-            string harvestAllUrl = string.Format(@"https://api.qonqr.com/v1/Forts/HarvestAll");
+            string harvestAllUrl = $"{BASE_URL}/Forts/HarvestAll";
 
-            HttpWebRequest request = CreateBasicRequest(RequestType.POST, harvestAllUrl);
-            request.Headers = SetHeaders(latitude, longitude);
-            string responseBody = await SendRequestGetResponseAsync(RequestType.POST, request, string.Empty, cancellationToken);
-            if (responseBody == string.Empty)
+            using var request = new HttpRequestMessage(HttpMethod.Post, harvestAllUrl);
+            AddAuthHeaders(request, latitude, longitude);
+
+            string responseBody = await SendHttpRequestAsync(request, cancellationToken);
+            if (string.IsNullOrEmpty(responseBody))
             {
                 return null;
             }
@@ -121,14 +94,16 @@ public class ApiCall
 
         public async Task<LaunchApiCall> LaunchAsync(string latitude, string longitude, string zoneId, string formationId, CancellationToken cancellationToken = default)
         {
-            string launchUrl = string.Format(@"https://api.qonqr.com/v1/Deployments/Launch");
+            string launchUrl = $"{BASE_URL}/Deployments/Launch";
 
-            HttpWebRequest request = CreateBasicRequest(RequestType.POST, launchUrl);
-            request.Headers = SetHeaders(latitude, longitude);
-            request.ContentType = "application/x-www-form-urlencoded";
-            string payload = string.Format("ZoneId={0}&FormationId={1}", zoneId, formationId);
-            string responseBody = await SendRequestGetResponseAsync(RequestType.POST, request, payload, cancellationToken);
-            if (responseBody == string.Empty)
+            using var request = new HttpRequestMessage(HttpMethod.Post, launchUrl);
+            AddAuthHeaders(request, latitude, longitude);
+            
+            string payload = $"ZoneId={zoneId}&FormationId={formationId}";
+            request.Content = new StringContent(payload, Encoding.UTF8, "application/x-www-form-urlencoded");
+
+            string responseBody = await SendHttpRequestAsync(request, cancellationToken);
+            if (string.IsNullOrEmpty(responseBody))
             {
                 return null;
             }
@@ -138,23 +113,21 @@ public class ApiCall
 
         internal async Task<ZonesPinsApiCall> ZonesPinsAsync(string latitude, string longitude, CancellationToken cancellationToken = default)
         {
-            double lat1 = 0;
-            double long1 = 0;
-            double.TryParse(latitude, out lat1);
-            double.TryParse(longitude, out long1);
+            double.TryParse(latitude, out double lat1);
+            double.TryParse(longitude, out double long1);
             double lat2 = lat1 - 0.2;
             double long2 = long1 + 0.2;
 
             DateTime now = DateTime.Now;
             string ampm = now.Hour <= 12 ? "AM" : "PM";
 
-            string zonesPinsUrl = string.Format(@"https://api.qonqr.com/v1/Zones/Pins/" + "{0}/{1}/{2}/{3}?nocache=" + "{4}%2F{5}%2F{6}%20{7}%3A{8}%3A{9}%20{10}",
-                lat1, long1, lat2, long2, now.Month, now.Day, now.Year, now.Hour, now.Minute, now.Second, ampm);
+            string zonesPinsUrl = $"{BASE_URL}/Zones/Pins/{lat1}/{long1}/{lat2}/{long2}?nocache={now.Month}%2F{now.Day}%2F{now.Year}%20{now.Hour}%3A{now.Minute}%3A{now.Second}%20{ampm}";
 
-            HttpWebRequest request = CreateBasicRequest(RequestType.GET, zonesPinsUrl);
-            request.Headers = SetHeaders(latitude, longitude);
-            string responseBody = await SendRequestGetResponseAsync(RequestType.GET, request, string.Empty, cancellationToken);
-            if (responseBody == string.Empty)
+            using var request = new HttpRequestMessage(HttpMethod.Get, zonesPinsUrl);
+            AddAuthHeaders(request, latitude, longitude);
+
+            string responseBody = await SendHttpRequestAsync(request, cancellationToken);
+            if (string.IsNullOrEmpty(responseBody))
             {
                 return null;
             }
@@ -162,90 +135,56 @@ public class ApiCall
             return JsonSerializer.Deserialize<ZonesPinsApiCall>(responseBody);
         }
 
-        private string FindPropertyValueInBody(string body, string propertyName, int startIndex = 0)
+        /// <summary>
+        /// Adds authentication and location headers to the HTTP request
+        /// </summary>
+        private void AddAuthHeaders(HttpRequestMessage request, string latitude, string longitude)
         {
-            int indexOfProperty = body.IndexOf("\"" + propertyName + "\":", startIndex);
-            if (indexOfProperty == -1)
-            {
-                return string.Empty;
-            }
-            int start = indexOfProperty + propertyName.Length + 3;
-            int end = body.IndexOf(',', start);
-            return body.Substring(start, end - start);
-        }
-
-        private WebHeaderCollection SetHeaders(string latitude, string longitude)
-        {
-            WebHeaderCollection headers = new WebHeaderCollection();
-            headers.Add(HttpRequestHeader.AcceptEncoding, "identity");
-            headers.Add("ClientAppVersion", CLIENT_APP_VERSION);
-            headers.Add("DeviceId", _deviceId);
-            headers.Add("DeviceType", "3");
-            headers.Add("Password", _password);
-            headers.Add("Username", _username);
-
-            //headers.Add("Password", "snuggles");
-            //headers.Add("Username", "Luck");
+            request.Headers.Add("DeviceId", _deviceId);
+            request.Headers.Add("Password", _password);
+            request.Headers.Add("Username", _username);
 
             if (!string.IsNullOrEmpty(latitude))
             {
-                headers.Add("Latitude", latitude);
+                request.Headers.Add("Latitude", latitude);
             }
             if (!string.IsNullOrEmpty(longitude))
             {
-                headers.Add("Longitude", longitude);
+                request.Headers.Add("Longitude", longitude);
             }
-
-            return headers;
         }
 
-        private async Task<string> SendRequestGetResponseAsync(RequestType requestType, HttpWebRequest request, string payload, CancellationToken cancellationToken)
+        /// <summary>
+        /// Sends an HTTP request and returns the response body
+        /// </summary>
+        private async Task<string> SendHttpRequestAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            if (requestType == RequestType.POST)
-            {
-                using (Stream s = await request.GetRequestStreamAsync())
-                {
-                    if (!string.IsNullOrEmpty(payload))
-                    {
-                        using (StreamWriter sw = new StreamWriter(s))
-                        {
-                            await sw.WriteAsync(payload);
-                        }
-                    }
-                }
-            }
-
-            string responseBody = string.Empty;
             try
             {
-                cancellationToken.ThrowIfCancellationRequested();
+                using var response = await _httpClient.SendAsync(request, cancellationToken);
                 
-                using (HttpWebResponse response = await request.GetResponseAsync() as HttpWebResponse)
-                using (Stream s = response.GetResponseStream())
-                using (StreamReader sr = new StreamReader(s))
+                if (!response.IsSuccessStatusCode)
                 {
-                    responseBody = await sr.ReadToEndAsync();
+                    return string.Empty;
                 }
+
+                return await response.Content.ReadAsStringAsync(cancellationToken);
             }
-            catch (WebException e)
+            catch (HttpRequestException)
             {
-                string status = e.Status.ToString();
                 return string.Empty;
             }
             catch (OperationCanceledException)
             {
                 return string.Empty;
             }
-            return responseBody;
         }
 
-        private HttpWebRequest CreateBasicRequest(RequestType requestType, string url)
+        /// <summary>
+        /// Disposes of the HttpClient
+        /// </summary>
+        public void Dispose()
         {
-            HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
-            request.Method = requestType.ToString();
-            request.UserAgent = USER_AGENT;
-            request.Referer = REFERER;
-            request.CachePolicy = new RequestCachePolicy(RequestCacheLevel.NoCacheNoStore);
-            return request;
+            _httpClient?.Dispose();
         }
     }
