@@ -86,48 +86,61 @@ namespace Qonqr
         /// A helper method that logs into all of your accounts and sets some
         /// additional metadata on them based on the login information
         /// </summary>
+        /// <param name="cancellationToken">Cancellation token</param>
         /// <returns>true if all logins were successful</returns>
-        public bool LoginAllAccounts()
+        public async Task<bool> LoginAllAccountsAsync(CancellationToken cancellationToken = default)
         {
             bool successful = true;
             foreach (Player account in _accounts)
             {
                 // Perform the actual Login Call
-                _loginApiCall = _apiCall.Login(account.Username, account.Password, account.DeviceId);
+                _loginApiCall = await _apiCall.LoginAsync(account.Username, account.Password, account.DeviceId, cancellationToken);
 
-                // Set some more properties on the account for future usage
-                account.Level = _loginApiCall.PlayerProfile.Level;
-                account.Faction = _loginApiCall.PlayerProfile.FactionId;
-
-                if (_loginApiCall != null)
+                if (_loginApiCall == null) // Fixed: was != null (inverted logic)
                 {
                     successful = false;
                     break;
                 }
+
+                // Set some more properties on the account for future usage
+                account.Level = _loginApiCall.PlayerProfile.Level;
+                account.Faction = _loginApiCall.PlayerProfile.FactionId;
+            }
+
+            if (successful && _loginApiCall != null)
+            {
+                LoadStats();
             }
 
             return successful;
         }
 
         /// <summary>
-        /// A helper method that logs into all of your accounts and sets some
-        /// additional metadata on them based on the login information
+        /// A helper method that gets forts for all of your accounts
         /// </summary>
-        /// <returns>true if all logins were successful</returns>
-        public bool GetAllForts()
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <returns>true if all fort requests were successful</returns>
+        public async Task<bool> GetAllFortsAsync(CancellationToken cancellationToken = default)
         {
             bool successful = true;
+            _fortsList.Clear();
+            
             foreach (Player account in _accounts)
             {
-                FortsApiCall forts = _apiCall.Forts(account.Latitude, account.Longitude);
-                account.Forts = forts.PlayerForts.Forts;
-
-                if (forts != null)
+                FortsApiCall forts = await _apiCall.FortsAsync(account.Latitude, account.Longitude, cancellationToken);
+                
+                if (forts == null) // Fixed: was != null (inverted logic)
                 {
                     successful = false;
                     break;
                 }
+
+                account.Forts = forts.PlayerForts.Forts;
+                
+                // Add to combined forts list
+                LoadForts(forts);
             }
+            
             return successful;
         }
 
@@ -135,21 +148,27 @@ namespace Qonqr
         /// A helper method that Harvests all of your accounts and sets some additional
         /// metadata on them based on the harvest information
         /// </summary>
-        /// <returns></returns>
-        public bool PerformHarvestAll()
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <returns>true if all harvests were successful</returns>
+        public async Task<bool> PerformHarvestAllAsync(CancellationToken cancellationToken = default)
         {
             bool successful = true;
+            _harvest.CreditsEarned = 0;
+            
             foreach (Player account in _accounts)
             {
-                HarvestAll harvestAll = _apiCall.HarvestAll(account.Latitude, account.Longitude);
-                account.SessionHarvestTotal += harvestAll.QreditsEarned;
-
-                if (harvestAll != null)
+                HarvestAll harvestAll = await _apiCall.HarvestAllAsync(account.Latitude, account.Longitude, cancellationToken);
+                
+                if (harvestAll == null) // Fixed: was != null (inverted logic)
                 {
                     successful = false;
                     break;
                 }
+
+                account.SessionHarvestTotal += harvestAll.QreditsEarned;
+                LoadHarvest(harvestAll);
             }
+            
             return successful;
         }
 
@@ -253,9 +272,9 @@ namespace Qonqr
             }
         }
 
-        public bool ScanZones()
+        public async Task<bool> ScanZonesAsync(CancellationToken cancellationToken = default)
         {
-            ZonesPinsApiCall zonesPins = _apiCall.ZonesPins(Lattitude, Longitude);
+            ZonesPinsApiCall zonesPins = await _apiCall.ZonesPinsAsync(Lattitude, Longitude, cancellationToken);
 
             LoadZones(zonesPins);
 
@@ -301,7 +320,7 @@ namespace Qonqr
 
         }
 
-        public bool LaunchBots(Zoneski zone, int myLevel)
+        public async Task<bool> LaunchBotsAsync(Zoneski zone, int myLevel, CancellationToken cancellationToken = default)
         {
             string attackFormation = "0";
             if (myLevel >= 42)
@@ -325,7 +344,7 @@ namespace Qonqr
                 attackFormation = "1011"; // Zone Assault 1
             }
 
-            LaunchApiCall launchData = _apiCall.Launch(zone.Latitude, zone.Longitude, zone.ZoneId, attackFormation);
+            LaunchApiCall launchData = await _apiCall.LaunchAsync(zone.Latitude, zone.Longitude, zone.ZoneId, attackFormation, cancellationToken);
 
             if (launchData != null) // gather launch data only if the call was successful
             {
@@ -405,4 +424,3 @@ namespace Qonqr
 
     }
 }
-

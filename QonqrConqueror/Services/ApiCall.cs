@@ -30,8 +30,10 @@ public class ApiCall
         /// </summary>
         /// <param name="username">The username</param>
         /// <param name="password">The password</param>
+        /// <param name="deviceId">The device ID</param>
+        /// <param name="cancellationToken">Cancellation token</param>
         /// <returns>Bot Capacity</returns>
-        public LoginApiCall Login(string username, string password, string deviceId)
+        public async Task<LoginApiCall> LoginAsync(string username, string password, string deviceId, CancellationToken cancellationToken = default)
         {
             _username = username;
             _password = password;
@@ -45,7 +47,7 @@ public class ApiCall
 
             HttpWebRequest request = CreateBasicRequest(RequestType.GET, loginUrl);
             request.Headers = SetHeaders(string.Empty, string.Empty);
-            string responseBody = SendRequestGetResponse(RequestType.GET, request);
+            string responseBody = await SendRequestGetResponseAsync(RequestType.GET, request, string.Empty, cancellationToken);
             if (responseBody == string.Empty)
             {
                 return null;
@@ -87,13 +89,13 @@ public class ApiCall
             //return info;
         }
 
-        public FortsApiCall Forts(string latitude, string longitude)
+        public async Task<FortsApiCall> FortsAsync(string latitude, string longitude, CancellationToken cancellationToken = default)
         {
             string fortsUrl = string.Format(@"https://api.qonqr.com/v1/Players/Forts");
 
             HttpWebRequest request = CreateBasicRequest(RequestType.POST, fortsUrl);
             request.Headers = SetHeaders(latitude, longitude);
-            string responseBody = SendRequestGetResponse(RequestType.POST, request);
+            string responseBody = await SendRequestGetResponseAsync(RequestType.POST, request, string.Empty, cancellationToken);
             if (responseBody == string.Empty)
             {
                 return null;
@@ -102,13 +104,13 @@ public class ApiCall
             return JsonSerializer.Deserialize<FortsApiCall>(responseBody);
         }
 
-        public HarvestAll HarvestAll(string latitude, string longitude)
+        public async Task<HarvestAll> HarvestAllAsync(string latitude, string longitude, CancellationToken cancellationToken = default)
         {
             string harvestAllUrl = string.Format(@"https://api.qonqr.com/v1/Forts/HarvestAll");
 
             HttpWebRequest request = CreateBasicRequest(RequestType.POST, harvestAllUrl);
             request.Headers = SetHeaders(latitude, longitude);
-            string responseBody = SendRequestGetResponse(RequestType.POST, request);
+            string responseBody = await SendRequestGetResponseAsync(RequestType.POST, request, string.Empty, cancellationToken);
             if (responseBody == string.Empty)
             {
                 return null;
@@ -117,7 +119,7 @@ public class ApiCall
             return JsonSerializer.Deserialize<HarvestAll>(responseBody);
         }
 
-        public LaunchApiCall Launch(string latitude, string longitude, string zoneId, string formationId)
+        public async Task<LaunchApiCall> LaunchAsync(string latitude, string longitude, string zoneId, string formationId, CancellationToken cancellationToken = default)
         {
             string launchUrl = string.Format(@"https://api.qonqr.com/v1/Deployments/Launch");
 
@@ -125,7 +127,7 @@ public class ApiCall
             request.Headers = SetHeaders(latitude, longitude);
             request.ContentType = "application/x-www-form-urlencoded";
             string payload = string.Format("ZoneId={0}&FormationId={1}", zoneId, formationId);
-            string responseBody = SendRequestGetResponse(RequestType.POST, request, payload);
+            string responseBody = await SendRequestGetResponseAsync(RequestType.POST, request, payload, cancellationToken);
             if (responseBody == string.Empty)
             {
                 return null;
@@ -134,7 +136,7 @@ public class ApiCall
             return JsonSerializer.Deserialize<LaunchApiCall>(responseBody);
         }
 
-        internal ZonesPinsApiCall ZonesPins(string latitude, string longitude)
+        internal async Task<ZonesPinsApiCall> ZonesPinsAsync(string latitude, string longitude, CancellationToken cancellationToken = default)
         {
             double lat1 = 0;
             double long1 = 0;
@@ -151,7 +153,7 @@ public class ApiCall
 
             HttpWebRequest request = CreateBasicRequest(RequestType.GET, zonesPinsUrl);
             request.Headers = SetHeaders(latitude, longitude);
-            string responseBody = SendRequestGetResponse(RequestType.GET, request);
+            string responseBody = await SendRequestGetResponseAsync(RequestType.GET, request, string.Empty, cancellationToken);
             if (responseBody == string.Empty)
             {
                 return null;
@@ -197,37 +199,41 @@ public class ApiCall
             return headers;
         }
 
-        private string SendRequestGetResponse(RequestType requestType, HttpWebRequest request)
-        {
-            return SendRequestGetResponse(requestType, request, string.Empty);
-        }
-
-        private string SendRequestGetResponse(RequestType requestType, HttpWebRequest request, string payload)
+        private async Task<string> SendRequestGetResponseAsync(RequestType requestType, HttpWebRequest request, string payload, CancellationToken cancellationToken)
         {
             if (requestType == RequestType.POST)
             {
-                Stream s = request.GetRequestStream();
-                if (!string.IsNullOrEmpty(payload))
+                using (Stream s = await request.GetRequestStreamAsync())
                 {
-                    StreamWriter sw = new StreamWriter(s);
-                    sw.Write(payload);
-                    sw.Dispose();
+                    if (!string.IsNullOrEmpty(payload))
+                    {
+                        using (StreamWriter sw = new StreamWriter(s))
+                        {
+                            await sw.WriteAsync(payload);
+                        }
+                    }
                 }
-                s.Dispose();
             }
+
             string responseBody = string.Empty;
             try
             {
-                HttpWebResponse response = request.GetResponse() as HttpWebResponse;
-                Stream s = response.GetResponseStream();
-                StreamReader sr = new StreamReader(s);
-                responseBody = sr.ReadToEnd();
-                sr.Dispose();
-                s.Dispose();
+                cancellationToken.ThrowIfCancellationRequested();
+                
+                using (HttpWebResponse response = await request.GetResponseAsync() as HttpWebResponse)
+                using (Stream s = response.GetResponseStream())
+                using (StreamReader sr = new StreamReader(s))
+                {
+                    responseBody = await sr.ReadToEndAsync();
+                }
             }
             catch (WebException e)
             {
                 string status = e.Status.ToString();
+                return string.Empty;
+            }
+            catch (OperationCanceledException)
+            {
                 return string.Empty;
             }
             return responseBody;

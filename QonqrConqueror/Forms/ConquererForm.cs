@@ -54,41 +54,46 @@ namespace Qonqr
 
         #region Event Handlers
 
-        private void loginButton_Click(object sender, EventArgs e)
+        private async void loginButton_Click(object sender, EventArgs e)
         {
-            loginLabel.Text = "Please Wait...";
-            loginGroupBox.Enabled = false;
+            loginButton.Enabled = false;
+            loginLabel.Text = "Logging in...";
 
-            Refresh();
-
-            //_successfullyLoggedIn = _qonqrManager.Login(usernameTextBox.Text, passwordTextBox.Text);
-            _successfullyLoggedIn = _qonqrManager.LoginAllAccounts();
-            
-            if (_successfullyLoggedIn)
+            try
             {
-                loginLabel.Text = "Login Successful";
-
-                loginGroupBox.Enabled = false;
-
-                // save login settings
-                App.Default.username = usernameTextBox.Text;
-                App.Default.password = passwordTextBox.Text;
-                App.Default.Save();
-
-                UpdateStats();
-                LoadBases();
-
-                UpdateZoneDropDown();
+                _successfullyLoggedIn = await _qonqrManager.LoginAllAccountsAsync();
                 
-                // grow screen
-                this.Width = 654;
-                this.Height = 534;
-            }
-            else
-            {
-                loginLabel.Text = "Login Failed";
+                if (_successfullyLoggedIn)
+                {
+                    loginLabel.Text = "Login Successful";
+                    loginGroupBox.Enabled = false;
 
+                    // save login settings
+                    App.Default.username = usernameTextBox.Text;
+                    App.Default.password = passwordTextBox.Text;
+                    App.Default.Save();
+
+                    await UpdateStatsAsync();
+                    await LoadBasesAsync();
+
+                    UpdateZoneDropDown();
+                    
+                    // grow screen
+                    this.Width = 654;
+                    this.Height = 534;
+                }
+                else
+                {
+                    loginLabel.Text = "Login Failed";
+                    loginGroupBox.Enabled = true;
+                    loginButton.Enabled = true;
+                }
+            }
+            catch (Exception ex)
+            {
+                loginLabel.Text = $"Error: {ex.Message}";
                 loginGroupBox.Enabled = true;
+                loginButton.Enabled = true;
             }
         }
         
@@ -110,15 +115,23 @@ namespace Qonqr
             longitudeNumericUpDown.Value = decimal.Parse(_qonqrManager.Longitude);
         }
 
-        private void harvestButton_Click(object sender, EventArgs e)
+        private async void harvestButton_Click(object sender, EventArgs e)
         {
             LockScreen();
             
-            bool successful = _qonqrManager.PerformHarvestAll();
-
-            UpdateHarvestControls(successful);
-            
-            UnlockScreen();
+            try
+            {
+                bool successful = await _qonqrManager.PerformHarvestAllAsync();
+                UpdateHarvestControls(successful);
+            }
+            catch (Exception ex)
+            {
+                baseStatusLabel.Text = $"Harvest Error: {ex.Message}";
+            }
+            finally
+            {
+                UnlockScreen();
+            }
         }
 
         private void autoharvest_Checked(object sender, EventArgs e)
@@ -127,32 +140,49 @@ namespace Qonqr
         }
 
 
-        private void tenMinuteUpdateTimer_Tick(object sender, EventArgs e)
+        private async void tenMinuteUpdateTimer_Tick(object sender, EventArgs e)
         {
             if (_successfullyLoggedIn && !_busy) // skip if we are not logged in or already busy doing something else
             {
-                UpdateStats();
-                LoadBases();
+                try
+                {
+                    await UpdateStatsAsync();
+                    await LoadBasesAsync();
 
-                // if a base is full then harvest all
-                if (autoHarvestCheckbox.Checked && _fullBaseExists)
-                    harvestButton_Click(null, new EventArgs());
-                
+                    // if a base is full then harvest all
+                    if (autoHarvestCheckbox.Checked && _fullBaseExists)
+                    {
+                        harvestButton_Click(null, new EventArgs());
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Log error but don't stop the timer
+                    baseStatusLabel.Text = $"Update Error: {ex.Message}";
+                }
             }
         }
 
-        private void button_Scan_Click(object sender, EventArgs e)
+        private async void button_Scan_Click(object sender, EventArgs e)
         {
             LockScreen();
 
-            _qonqrManager.Lattitude = lattitudeNumericUpDown.Value.ToString();
-            _qonqrManager.Longitude = longitudeNumericUpDown.Value.ToString();
+            try
+            {
+                _qonqrManager.Lattitude = lattitudeNumericUpDown.Value.ToString();
+                _qonqrManager.Longitude = longitudeNumericUpDown.Value.ToString();
 
-            bool successful = _qonqrManager.ScanZones();
-
-            UpdateZoneControls(successful);
-
-            UnlockScreen();
+                bool successful = await _qonqrManager.ScanZonesAsync();
+                UpdateZoneControls(successful);
+            }
+            catch (Exception ex)
+            {
+                mapScanStatusLabel.Text = $"Scan Error: {ex.Message}";
+            }
+            finally
+            {
+                UnlockScreen();
+            }
         }
 
         private void button_Set_Click(object sender, EventArgs e)
@@ -179,36 +209,44 @@ namespace Qonqr
             }
         }
 
-        private void launchBotsButton_Click(object sender, EventArgs e)
+        private async void launchBotsButton_Click(object sender, EventArgs e)
         {
             LockScreen();
 
-            QonqrManager.Zoneski zone = new QonqrManager.Zoneski();
+            try
+            {
+                QonqrManager.Zoneski zone = new QonqrManager.Zoneski();
 
-            // get attacking zone info
-            int selectedIndex = zoneComboBox.SelectedIndex;
-            string attackDone = zoneComboBox.Items[selectedIndex].ToString();
-            int start = attackDone.IndexOf("[") + 1;
-            int end = attackDone.IndexOf("]");
-            string zoneId = attackDone.Substring(start, end - start);
-            int startLatLong = attackDone.IndexOf("<") + 1;
-            int endLatLong = attackDone.IndexOf(">");
-            string latLong = attackDone.Substring(startLatLong, endLatLong - startLatLong);
-            string[] latLongArray = latLong.Split('/');
-            string latitude = latLongArray[0];
-            string longitude = latLongArray[1];
-            zone.Latitude = latitude;
-            zone.Longitude = longitude;
-            zone.ZoneId = zoneId;
+                // get attacking zone info
+                int selectedIndex = zoneComboBox.SelectedIndex;
+                string attackDone = zoneComboBox.Items[selectedIndex].ToString();
+                int start = attackDone.IndexOf("[") + 1;
+                int end = attackDone.IndexOf("]");
+                string zoneId = attackDone.Substring(start, end - start);
+                int startLatLong = attackDone.IndexOf("<") + 1;
+                int endLatLong = attackDone.IndexOf(">");
+                string latLong = attackDone.Substring(startLatLong, endLatLong - startLatLong);
+                string[] latLongArray = latLong.Split('/');
+                string latitude = latLongArray[0];
+                string longitude = latLongArray[1];
+                zone.Latitude = latitude;
+                zone.Longitude = longitude;
+                zone.ZoneId = zoneId;
 
-            int myLevel = 0;
-            int.TryParse(levelValueLabel.Text, out myLevel);
+                int myLevel = 0;
+                int.TryParse(levelValueLabel.Text, out myLevel);
 
-            bool successful = _qonqrManager.LaunchBots(zone, myLevel);
-
-            UpdateLocationControls(successful);
-
-            UnlockScreen();
+                bool successful = await _qonqrManager.LaunchBotsAsync(zone, myLevel);
+                UpdateLocationControls(successful);
+            }
+            catch (Exception ex)
+            {
+                launchStatusLabel.Text = $"Launch Error: {ex.Message}";
+            }
+            finally
+            {
+                UnlockScreen();
+            }
         }
 
         private void secondUpdateTimer_Tick(object sender, EventArgs e)
@@ -272,11 +310,10 @@ namespace Qonqr
             mapGroupBox.Enabled = true;
         }
         
-        private void UpdateStats()
+        private async Task UpdateStatsAsync()
         {
             // need to re-login to see updated stats
-            //bool successful = _qonqrManager.Login(usernameTextBox.Text, passwordTextBox.Text);
-            bool successful = _qonqrManager.LoginAllAccounts();
+            bool successful = await _qonqrManager.LoginAllAccountsAsync();
             
             // the qonqr manager stats are cleared if we failed to login,
             // they are either set to their corresponding values or to blank
@@ -291,20 +328,23 @@ namespace Qonqr
             codenameValueLabel.Text = _qonqrManager.Statistics.CodeName;
         }
 
-        private void LoadBases()
+        private async Task LoadBasesAsync()
         {
             LockScreen();
 
-            // reset flags
-            _fullBaseExists = false;
-            _canHarvestBase = false;
+            try
+            {
+                // reset flags
+                _fullBaseExists = false;
+                _canHarvestBase = false;
 
-            bool successful = _qonqrManager.GetAllForts();
-            //bool successful = _qonqrManager.GetForts();
-
-            UpdateBaseControls(successful);
-            
-            UnlockScreen();
+                bool successful = await _qonqrManager.GetAllFortsAsync();
+                UpdateBaseControls(successful);
+            }
+            finally
+            {
+                UnlockScreen();
+            }
         }
 
         private void UpdateBaseControls(bool successful)
@@ -424,7 +464,7 @@ namespace Qonqr
             }
         }
 
-        private void UpdateHarvestControls(bool successful)
+        private async void UpdateHarvestControls(bool successful)
         {
             if (!successful) // failed harvesting bases
             {
@@ -439,7 +479,7 @@ namespace Qonqr
                 creditsEarnedLabel.ForeColor = Color.Green;
                 creditsEarnedLabel.Text = string.Format("Credits Harvested: {0}", _qonqrManager.Harvest.TotalCreditsEarned);
 
-                LoadBases();
+                await LoadBasesAsync();
             }
         }
         
@@ -502,4 +542,3 @@ namespace Qonqr
 
     }
 }
-
