@@ -1,12 +1,10 @@
-﻿namespace Qonqr
-{
-    using System;
-    using System.IO;
-    using System.Net;
-    using System.Net.Cache;
-    using System.Web.Script.Serialization;
+﻿using System.Net;
+using System.Net.Cache;
+using System.Text.Json;
 
-    public class ApiCall
+namespace Qonqr;
+
+public class ApiCall
     {
         private enum RequestType
         {
@@ -53,8 +51,7 @@
                 return null;
             }
 
-            JavaScriptSerializer js = new JavaScriptSerializer();
-            return js.Deserialize<LoginApiCall>(responseBody);
+            return JsonSerializer.Deserialize<LoginApiCall>(responseBody);
 
             //string name = FindPropertyValueInBody(responseBody, "User");
             //string level = FindPropertyValueInBody(responseBody, "Level");
@@ -102,8 +99,7 @@
                 return null;
             }
 
-            JavaScriptSerializer js = new JavaScriptSerializer();
-            return js.Deserialize<FortsApiCall>(responseBody);
+            return JsonSerializer.Deserialize<FortsApiCall>(responseBody);
         }
 
         public HarvestAll HarvestAll(string latitude, string longitude)
@@ -118,8 +114,7 @@
                 return null;
             }
 
-            JavaScriptSerializer js = new JavaScriptSerializer();
-            return js.Deserialize<HarvestAll>(responseBody);
+            return JsonSerializer.Deserialize<HarvestAll>(responseBody);
         }
 
         public LaunchApiCall Launch(string latitude, string longitude, string zoneId, string formationId)
@@ -136,8 +131,7 @@
                 return null;
             }
 
-            JavaScriptSerializer js = new JavaScriptSerializer();
-            return js.Deserialize<LaunchApiCall>(responseBody);
+            return JsonSerializer.Deserialize<LaunchApiCall>(responseBody);
         }
 
         internal ZonesPinsApiCall ZonesPins(string latitude, string longitude)
@@ -163,8 +157,7 @@
                 return null;
             }
 
-            JavaScriptSerializer js = new JavaScriptSerializer();
-            return js.Deserialize<ZonesPinsApiCall>(responseBody);
+            return JsonSerializer.Deserialize<ZonesPinsApiCall>(responseBody);
         }
 
         private string FindPropertyValueInBody(string body, string propertyName, int startIndex = 0)
@@ -239,5 +232,14 @@
             }
             return responseBody;
         }
+
+        private HttpWebRequest CreateBasicRequest(RequestType requestType, string url)
+        {
+            HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
+            request.Method = requestType.ToString();
+            request.UserAgent = USER_AGENT;
+            request.Referer = REFERER;
+            request.CachePolicy = new RequestCachePolicy(RequestCacheLevel.NoCacheNoStore);
+            return request;
+        }
     }
-}

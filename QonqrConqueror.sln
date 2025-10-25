@@ -1,18 +1,10 @@
-﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 2012
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Qonqr Conqueror", "Qonqr Conqueror\Qonqr Conqueror.csproj", "{0BD69A94-0ADD-4966-B804-0099AAE70634}"
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "QonqrConqueror", "QonqrConqueror\QonqrConqueror.csproj", "{0BD69A94-0ADD-4966-B804-0099AAE70634}"
 EndProject
 Global
-	GlobalSection(TeamFoundationVersionControl) = preSolution
-		SccNumberOfProjects = 2
-		SccEnterpriseProvider = {4CA58AB2-18FA-4F8D-95D4-32DDF27D184C}
-		SccTeamFoundationServer = https://qonqueror.tfspreview.com/defaultcollection
-		SccLocalPath0 = .
-		SccProjectUniqueName1 = Qonqr\u0020Conqueror\\Qonqr\u0020Conqueror.csproj
-		SccProjectName1 = Qonqr\u0020Conqueror
-		SccLocalPath1 = Qonqr\u0020Conqueror
-	EndGlobalSection
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
 		Release|Any CPU = Release|Any CPU
