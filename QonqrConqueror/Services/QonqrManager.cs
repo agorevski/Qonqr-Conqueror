@@ -96,7 +96,7 @@ namespace Qonqr
                 // Perform the actual Login Call
                 _loginApiCall = await _apiCall.LoginAsync(account.Username, account.Password, account.DeviceId, cancellationToken);
 
-                if (_loginApiCall == null) // Fixed: was != null (inverted logic)
+                if (_loginApiCall == null)
                 {
                     successful = false;
                     break;
@@ -129,7 +129,7 @@ namespace Qonqr
             {
                 FortsApiCall forts = await _apiCall.FortsAsync(account.Latitude, account.Longitude, cancellationToken);
                 
-                if (forts == null) // Fixed: was != null (inverted logic)
+                if (forts == null)
                 {
                     successful = false;
                     break;
@@ -159,7 +159,7 @@ namespace Qonqr
             {
                 HarvestAll harvestAll = await _apiCall.HarvestAllAsync(account.Latitude, account.Longitude, cancellationToken);
                 
-                if (harvestAll == null) // Fixed: was != null (inverted logic)
+                if (harvestAll == null)
                 {
                     successful = false;
                     break;
@@ -240,8 +240,8 @@ namespace Qonqr
 
         public void ResetCoordinates()
         {
-            Lattitude = "47.6469383239746";
-            Longitude = "-122.133738517761";
+            Lattitude = Constants.DefaultCoordinates.Latitude;
+            Longitude = Constants.DefaultCoordinates.Longitude;
         }
 
         public void LoadStats()
@@ -306,14 +306,14 @@ namespace Qonqr
         {
             switch (zoneControlState)
             {
-                case 0:
-                    return "*U*";
-                case 1:
-                    return "*L*";
-                case 2:
-                    return "*S*";
-                case 3:
-                    return "*F*";
+                case Constants.ZoneControlStates.UncapturedValue:
+                    return Constants.ZoneControlStates.Uncaptured;
+                case Constants.ZoneControlStates.LegionValue:
+                    return Constants.ZoneControlStates.Legion;
+                case Constants.ZoneControlStates.SwarmValue:
+                    return Constants.ZoneControlStates.Swarm;
+                case Constants.ZoneControlStates.FacelessValue:
+                    return Constants.ZoneControlStates.Faceless;
                 default:
                     return string.Empty;
             };
@@ -322,26 +322,23 @@ namespace Qonqr
 
         public async Task<bool> LaunchBotsAsync(Zoneski zone, int myLevel, CancellationToken cancellationToken = default)
         {
-            string attackFormation = "0";
-            if (myLevel >= 42)
+            string attackFormation = Constants.AttackFormations.ZoneAssault1;
+            
+            if (myLevel >= Constants.AttackFormations.Shockwave4MinLevel)
             {
-                attackFormation = "1024"; // Shockwave 4
+                attackFormation = Constants.AttackFormations.Shockwave4;
             }
-            else if (myLevel >= 29)
+            else if (myLevel >= Constants.AttackFormations.Shockwave3MinLevel)
             {
-                attackFormation = "1023"; // Shockwave 3
+                attackFormation = Constants.AttackFormations.Shockwave3;
             }
-            else if (myLevel >= 13)
+            else if (myLevel >= Constants.AttackFormations.Shockwave2MinLevel)
             {
-                attackFormation = "1022"; // Shockwave 2
+                attackFormation = Constants.AttackFormations.Shockwave2;
             }
-            else if (myLevel >= 3)
+            else if (myLevel >= Constants.AttackFormations.Shockwave1MinLevel)
             {
-                attackFormation = "1021"; // Shockwave 1
-            }
-            else
-            {
-                attackFormation = "1011"; // Zone Assault 1
+                attackFormation = Constants.AttackFormations.Shockwave1;
             }
 
             LaunchApiCall launchData = await _apiCall.LaunchAsync(zone.Latitude, zone.Longitude, zone.ZoneId, attackFormation, cancellationToken);

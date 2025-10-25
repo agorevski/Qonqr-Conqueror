@@ -31,13 +31,15 @@ namespace Qonqr
 
             _qonqrManager = new QonqrManager();
 
-            // load default coordinates
-            //lattitudeNumericUpDown.Value = int.Parse(_qonqrManager.Lattitude);
-            //longitudeNumericUpDown.Value = int.Parse(_qonqrManager.Longitude);
-
             // load previous settings
-            lattitudeNumericUpDown.Value = decimal.Parse(App.Default.lattitude);
-            longitudeNumericUpDown.Value = decimal.Parse(App.Default.longitude);
+            if (decimal.TryParse(App.Default.lattitude, out decimal savedLat))
+            {
+                lattitudeNumericUpDown.Value = savedLat;
+            }
+            if (decimal.TryParse(App.Default.longitude, out decimal savedLong))
+            {
+                longitudeNumericUpDown.Value = savedLong;
+            }
             usernameTextBox.Text = App.Default.username;
             passwordTextBox.Text = App.Default.password;
 
@@ -110,8 +112,14 @@ namespace Qonqr
         {
             _qonqrManager.ResetCoordinates();
 
-            lattitudeNumericUpDown.Value = decimal.Parse(_qonqrManager.Lattitude);
-            longitudeNumericUpDown.Value = decimal.Parse(_qonqrManager.Longitude);
+            if (decimal.TryParse(_qonqrManager.Lattitude, out decimal lat))
+            {
+                lattitudeNumericUpDown.Value = lat;
+            }
+            if (decimal.TryParse(_qonqrManager.Longitude, out decimal lon))
+            {
+                longitudeNumericUpDown.Value = lon;
+            }
         }
 
         private async void harvestButton_Click(object sender, EventArgs e)
@@ -338,48 +346,7 @@ namespace Qonqr
             if (!successful) // failed getting forts
             {
                 baseStatusLabel.Text = "Loading Bases Failed";
-
-                // clear forts
-                base1Label.Text = "Base 1";
-                base1Label.ForeColor = Color.Black;
-                base2Label.Text = "Base 2";
-                base2Label.ForeColor = Color.Black;
-                base3Label.Text = "Base 3";
-                base3Label.ForeColor = Color.Black;
-                base4Label.Text = "Base 4";
-                base4Label.ForeColor = Color.Black;
-                base5Label.Text = "Base 5";
-                base5Label.ForeColor = Color.Black;
-                base6Label.Text = "Base 6";
-                base6Label.ForeColor = Color.Black;
-                base7Label.Text = "Base 7";
-                base7Label.ForeColor = Color.Black;
-                base8Label.Text = "Base 8";
-                base8Label.ForeColor = Color.Black;
-                base9Label.Text = "Base 9";
-                base9Label.ForeColor = Color.Black;
-                base10Label.Text = "Base 10";
-                base10Label.ForeColor = Color.Black;
-                base11Label.Text = "Base 11";
-                base11Label.ForeColor = Color.Black;
-                base12Label.Text = "Base 12";
-                base12Label.ForeColor = Color.Black;
-                base13Label.Text = "Base 13";
-                base13Label.ForeColor = Color.Black;
-                base14Label.Text = "Base 14";
-                base14Label.ForeColor = Color.Black;
-                base15Label.Text = "Base 15";
-                base15Label.ForeColor = Color.Black;
-                base16Label.Text = "Base 16";
-                base16Label.ForeColor = Color.Black;
-                base17Label.Text = "Base 17";
-                base17Label.ForeColor = Color.Black;
-                base18Label.Text = "Base 18";
-                base18Label.ForeColor = Color.Black;
-                base19Label.Text = "Base 19";
-                base19Label.ForeColor = Color.Black;
-                base20Label.Text = "Base 20";
-                base20Label.ForeColor = Color.Black;
+                ResetBaseLabels();
             }
             else
             {
@@ -419,16 +386,16 @@ namespace Qonqr
 
                         switch (fort.ControlState)
                         {
-                            case "*U*":
+                            case Constants.ZoneControlStates.Uncaptured:
                                 label.ForeColor = System.Drawing.Color.Gray;
                                 break;
-                            case "*L*":
+                            case Constants.ZoneControlStates.Legion:
                                 label.ForeColor = System.Drawing.Color.Red;
                                 break;
-                            case "*S*":
+                            case Constants.ZoneControlStates.Swarm:
                                 label.ForeColor = System.Drawing.Color.Green;
                                 break;
-                            case "*F*":
+                            case Constants.ZoneControlStates.Faceless:
                                 label.ForeColor = System.Drawing.Color.Purple;
                                 break;
                             default:
@@ -439,7 +406,7 @@ namespace Qonqr
                         labelText = labelText.Replace('"', ' ');
                         label.Text = labelText;
 
-                        if (fort.CurrentGasInTank == 100 && label.ForeColor == System.Drawing.Color.Red)
+                        if (fort.CurrentGasInTank == Constants.Bases.FullGasCapacity && label.ForeColor == System.Drawing.Color.Red)
                             _fullBaseExists = true;
 
                         if (fort.CurrentGasInTank > 0 && label.ForeColor == System.Drawing.Color.Red)
@@ -567,6 +534,27 @@ namespace Qonqr
                 ResourceCalculator.AreResourcesFull(currentBots, botCapacity, currentEnergy, energyCapacity))
             {
                 launchBotsButton_Click(null, EventArgs.Empty);
+            }
+        }
+
+        /// <summary>
+        /// Helper method to reset all base labels to their default state
+        /// Eliminates code duplication by using a loop instead of 20 individual statements
+        /// </summary>
+        private void ResetBaseLabels()
+        {
+            List<Label> baseLabels = new List<Label>
+            {
+                base1Label, base2Label, base3Label, base4Label, base5Label,
+                base6Label, base7Label, base8Label, base9Label, base10Label,
+                base11Label, base12Label, base13Label, base14Label, base15Label,
+                base16Label, base17Label, base18Label, base19Label, base20Label
+            };
+
+            for (int i = 0; i < baseLabels.Count; i++)
+            {
+                baseLabels[i].Text = $"Base {i + 1}";
+                baseLabels[i].ForeColor = Color.Black;
             }
         }
 
