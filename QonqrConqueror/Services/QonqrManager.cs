@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Qonqr.Exceptions;
 
 namespace Qonqr
 {
@@ -44,7 +45,7 @@ namespace Qonqr
 
         #region Properties
 
-        public string Lattitude { get; set; }
+        public string Latitude { get; set; }
 
         public string Longitude { get; set; }
 
@@ -90,29 +91,31 @@ namespace Qonqr
         /// <returns>true if all logins were successful</returns>
         public async Task<bool> LoginAllAccountsAsync(CancellationToken cancellationToken = default)
         {
-            bool successful = true;
-            foreach (Player account in _accounts)
+            try
             {
-                // Perform the actual Login Call
-                _loginApiCall = await _apiCall.LoginAsync(account.Username, account.Password, account.DeviceId, cancellationToken);
-
-                if (_loginApiCall == null)
+                foreach (Player account in _accounts)
                 {
-                    successful = false;
-                    break;
+                    // Perform the actual Login Call
+                    _loginApiCall = await _apiCall.LoginAsync(account.Username, account.Password, account.DeviceId, cancellationToken);
+
+                    // Set some more properties on the account for future usage
+                    account.Level = _loginApiCall.PlayerProfile.Level;
+                    account.Faction = _loginApiCall.PlayerProfile.FactionId;
                 }
 
-                // Set some more properties on the account for future usage
-                account.Level = _loginApiCall.PlayerProfile.Level;
-                account.Faction = _loginApiCall.PlayerProfile.FactionId;
-            }
-
-            if (successful && _loginApiCall != null)
-            {
                 LoadStats();
+                return true;
             }
-
-            return successful;
+            catch (LoginFailedException ex)
+            {
+                Logger.LogError("LoginAllAccountsAsync", ex, ex.Username);
+                return false;
+            }
+            catch (QonqrApiException ex)
+            {
+                Logger.LogError("LoginAllAccountsAsync", ex, "system");
+                return false;
+            }
         }
 
         /// <summary>
@@ -122,26 +125,27 @@ namespace Qonqr
         /// <returns>true if all fort requests were successful</returns>
         public async Task<bool> GetAllFortsAsync(CancellationToken cancellationToken = default)
         {
-            bool successful = true;
-            _fortsList.Clear();
-            
-            foreach (Player account in _accounts)
+            try
             {
-                FortsApiCall forts = await _apiCall.FortsAsync(account.Latitude, account.Longitude, cancellationToken);
+                _fortsList.Clear();
                 
-                if (forts == null)
+                foreach (Player account in _accounts)
                 {
-                    successful = false;
-                    break;
+                    FortsApiCall forts = await _apiCall.FortsAsync(account.Latitude, account.Longitude, cancellationToken);
+                    
+                    account.Forts = forts.PlayerForts.Forts;
+                    
+                    // Add to combined forts list
+                    LoadForts(forts);
                 }
-
-                account.Forts = forts.PlayerForts.Forts;
                 
-                // Add to combined forts list
-                LoadForts(forts);
+                return true;
             }
-            
-            return successful;
+            catch (QonqrApiException ex)
+            {
+                Logger.LogError("GetAllFortsAsync", ex, "system");
+                return false;
+            }
         }
 
         /// <summary>
@@ -152,61 +156,26 @@ namespace Qonqr
         /// <returns>true if all harvests were successful</returns>
         public async Task<bool> PerformHarvestAllAsync(CancellationToken cancellationToken = default)
         {
-            bool successful = true;
-            _harvest.CreditsEarned = 0;
-            
-            foreach (Player account in _accounts)
+            try
             {
-                HarvestAll harvestAll = await _apiCall.HarvestAllAsync(account.Latitude, account.Longitude, cancellationToken);
+                _harvest.CreditsEarned = 0;
                 
-                if (harvestAll == null)
+                foreach (Player account in _accounts)
                 {
-                    successful = false;
-                    break;
+                    HarvestAll harvestAll = await _apiCall.HarvestAllAsync(account.Latitude, account.Longitude, cancellationToken);
+                    
+                    account.SessionHarvestTotal += harvestAll.QreditsEarned;
+                    LoadHarvest(harvestAll);
                 }
-
-                account.SessionHarvestTotal += harvestAll.QreditsEarned;
-                LoadHarvest(harvestAll);
+                
+                return true;
             }
-            
-            return successful;
+            catch (QonqrApiException ex)
+            {
+                Logger.LogError("PerformHarvestAllAsync", ex, "system");
+                return false;
+            }
         }
-
-        // Deprecated method that Nick was using, that hard-codes the DeviceID. Bad!
-        //public bool Login(string username, string password)
-        //{
-        //    string deviceId = "masdkAhsmGPs" + username + "=";
-
-        //    _loginApiCall = _apiCall.Login(username, password, deviceId);
-
-        //    bool successful = _loginApiCall != null;
-
-        //    if (successful)
-        //        LoadStats();
-
-        //    return successful;
-        //}
-
-        // Deprecated function Nick was using
-        //public bool GetForts()
-        //{
-        //    FortsApiCall fortsApiCall = _apiCall.Forts(Lattitude, Longitude);
-
-        //    LoadForts(fortsApiCall);
-
-        //    return fortsApiCall != null; // this is null if the call failed
-        //}
-
-        //Deprecated function Nick was using
-        //public bool PerformHarvest()
-        //{
-
-        //    HarvestAll harvestAll = _apiCall.HarvestAll(Lattitude, Longitude);
-
-        //    LoadHarvest(harvestAll);
-
-        //    return harvestAll != null; // this is null if the call failed
-        //}
 
 
         private void LoadForts(FortsApiCall fortsApiCall)
@@ -240,7 +209,7 @@ namespace Qonqr
 
         public void ResetCoordinates()
         {
-            Lattitude = Constants.DefaultCoordinates.Latitude;
+            Latitude = Constants.DefaultCoordinates.Latitude;
             Longitude = Constants.DefaultCoordinates.Longitude;
         }
 
@@ -274,11 +243,17 @@ namespace Qonqr
 
         public async Task<bool> ScanZonesAsync(CancellationToken cancellationToken = default)
         {
-            ZonesPinsApiCall zonesPins = await _apiCall.ZonesPinsAsync(Lattitude, Longitude, cancellationToken);
-
-            LoadZones(zonesPins);
-
-            return zonesPins != null;
+            try
+            {
+                ZonesPinsApiCall zonesPins = await _apiCall.ZonesPinsAsync(Latitude, Longitude, cancellationToken);
+                LoadZones(zonesPins);
+                return true;
+            }
+            catch (QonqrApiException ex)
+            {
+                Logger.LogError("ScanZonesAsync", ex, "system");
+                return false;
+            }
         }
 
         private void LoadZones(ZonesPinsApiCall zonesPins)
@@ -322,99 +297,86 @@ namespace Qonqr
 
         public async Task<bool> LaunchBotsAsync(Zoneski zone, int myLevel, CancellationToken cancellationToken = default)
         {
-            string attackFormation = Constants.AttackFormations.ZoneAssault1;
-            
-            if (myLevel >= Constants.AttackFormations.Shockwave4MinLevel)
+            try
             {
-                attackFormation = Constants.AttackFormations.Shockwave4;
-            }
-            else if (myLevel >= Constants.AttackFormations.Shockwave3MinLevel)
-            {
-                attackFormation = Constants.AttackFormations.Shockwave3;
-            }
-            else if (myLevel >= Constants.AttackFormations.Shockwave2MinLevel)
-            {
-                attackFormation = Constants.AttackFormations.Shockwave2;
-            }
-            else if (myLevel >= Constants.AttackFormations.Shockwave1MinLevel)
-            {
-                attackFormation = Constants.AttackFormations.Shockwave1;
-            }
+                string attackFormation = Constants.AttackFormations.ZoneAssault1;
+                
+                if (myLevel >= Constants.AttackFormations.Shockwave4MinLevel)
+                {
+                    attackFormation = Constants.AttackFormations.Shockwave4;
+                }
+                else if (myLevel >= Constants.AttackFormations.Shockwave3MinLevel)
+                {
+                    attackFormation = Constants.AttackFormations.Shockwave3;
+                }
+                else if (myLevel >= Constants.AttackFormations.Shockwave2MinLevel)
+                {
+                    attackFormation = Constants.AttackFormations.Shockwave2;
+                }
+                else if (myLevel >= Constants.AttackFormations.Shockwave1MinLevel)
+                {
+                    attackFormation = Constants.AttackFormations.Shockwave1;
+                }
 
-            LaunchApiCall launchData = await _apiCall.LaunchAsync(zone.Latitude, zone.Longitude, zone.ZoneId, attackFormation, cancellationToken);
+                LaunchApiCall launchData = await _apiCall.LaunchAsync(zone.Latitude, zone.Longitude, zone.ZoneId, attackFormation, cancellationToken);
 
-            if (launchData != null) // gather launch data only if the call was successful
-            {
+                // Gather launch data
                 _launch.BotsAfterLaunch = launchData.HUD.BotCountAfterLastDeployment;
                 _launch.BotsPerSecond = launchData.HUD.BotsPerSecond;
                 _launch.BotsLaunched = launchData.Summary.Breakdown.BotsLaunched;
                 _launch.EnergyAfterLaunch = launchData.HUD.EnergyCountAfterLastDeployment;
                 _launch.EnergyPerSecond = launchData.HUD.EnergyPerSecond;
                 _launch.PlayerCapturedZone = launchData.Summary.Rewards.PlayerCapturedZone;
-            }
 
-            return launchData != null; // this is null if the call failed
+                return true;
+            }
+            catch (QonqrApiException ex)
+            {
+                Logger.LogError("LaunchBotsAsync", ex, "system");
+                return false;
+            }
         }
 
         #endregion
 
-        #region Structs
+        #region Data Classes
 
-        public struct Stats
+        public class Stats
         {
-            public string BotCapacity { get; set; }
-
-            public string EnergyCapacity { get; set; }
-
-            public string CurrentExperience { get; set; }
-
-            public string Level { get; set; }
-
-            public string ExperienceToLevel { get; set; }
-
-            public string Zones { get; set; }
-
-            public string Credits { get; set; }
-
-            public string CodeName { get; set; }
+            public string BotCapacity { get; set; } = string.Empty;
+            public string EnergyCapacity { get; set; } = string.Empty;
+            public string CurrentExperience { get; set; } = string.Empty;
+            public string Level { get; set; } = string.Empty;
+            public string ExperienceToLevel { get; set; } = string.Empty;
+            public string Zones { get; set; } = string.Empty;
+            public string Credits { get; set; } = string.Empty;
+            public string CodeName { get; set; } = string.Empty;
         }
 
-        public struct Zoneski
+        public class Zoneski
         {
-            public string ZoneName { get; set; }
-
-            public string ZoneId { get; set; }
-
-            public string Latitude { get; set; }
-
-            public string Longitude { get; set; }
-
-            public string ControlState { get; set; }
-
+            public string ZoneName { get; set; } = string.Empty;
+            public string ZoneId { get; set; } = string.Empty;
+            public string Latitude { get; set; } = string.Empty;
+            public string Longitude { get; set; } = string.Empty;
+            public string ControlState { get; set; } = string.Empty;
             public int CurrentGasInTank { get; set; }
         }
 
-        public struct Harvester
+        public class Harvester
         {
             public int CreditsEarned { get; set; }
-
             public int TotalCreditsEarned { get; set; }
         }
 
-        public struct Launcher
+        public class Launcher
         {
             public int BotsAfterLaunch { get; set; }
-
             public double BotsPerSecond { get; set; }
-
             public int BotsLaunched { get; set; }
-
             public bool PlayerCapturedZone { get; set; }
-
             public int EnergyAfterLaunch { get; set; }
-
             public double EnergyPerSecond { get; set; }
-
         }
 
         #endregion

@@ -50,12 +50,12 @@ namespace Qonqr {
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
         [global::System.Configuration.DefaultSettingValueAttribute("47.6469383239746")]
-        public string lattitude {
+        public string latitude {
             get {
-                return ((string)(this["lattitude"]));
+                return ((string)(this["latitude"]));
             }
             set {
-                this["lattitude"] = value;
+                this["latitude"] = value;
             }
         }
         
@@ -72,4 +72,3 @@ namespace Qonqr {
         }
     }
 }
-

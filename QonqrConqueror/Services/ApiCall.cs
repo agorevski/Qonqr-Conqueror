@@ -2,13 +2,15 @@
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
+using Qonqr.Exceptions;
 
 namespace Qonqr;
 
-public class ApiCall : IDisposable
+    public class ApiCall : IDisposable
     {
         // Singleton HttpClient to avoid socket exhaustion
         private static readonly HttpClient _sharedHttpClient;
+        private readonly ApiConfiguration _apiConfig;
         
         private string _username;
         private string _password;
@@ -19,19 +21,24 @@ public class ApiCall : IDisposable
         /// </summary>
         static ApiCall()
         {
-            _sharedHttpClient = new HttpClient();
-            _sharedHttpClient.DefaultRequestHeaders.Add("User-Agent", Constants.Api.UserAgent);
+            var config = ApiConfiguration.Current;
+            _sharedHttpClient = new HttpClient
+            {
+                Timeout = TimeSpan.FromSeconds(config.TimeoutSeconds)
+            };
+            _sharedHttpClient.DefaultRequestHeaders.Add("User-Agent", config.UserAgent);
             _sharedHttpClient.DefaultRequestHeaders.Add("Accept-Encoding", "identity");
-            _sharedHttpClient.DefaultRequestHeaders.Add("Referer", Constants.Api.Referer);
-            _sharedHttpClient.DefaultRequestHeaders.Add("ClientAppVersion", Constants.Api.ClientAppVersion);
-            _sharedHttpClient.DefaultRequestHeaders.Add("DeviceType", Constants.Api.DeviceType);
+            _sharedHttpClient.DefaultRequestHeaders.Add("Referer", config.Referer);
+            _sharedHttpClient.DefaultRequestHeaders.Add("ClientAppVersion", config.ClientAppVersion);
+            _sharedHttpClient.DefaultRequestHeaders.Add("DeviceType", config.DeviceType);
         }
 
         /// <summary>
-        /// Instance constructor
+        /// Instance constructor with optional configuration
         /// </summary>
-        public ApiCall()
+        public ApiCall(ApiConfiguration? config = null)
         {
+            _apiConfig = config ?? ApiConfiguration.Current;
         }
 
         /// <summary>
@@ -50,7 +57,7 @@ public class ApiCall : IDisposable
 
             DateTime now = DateTime.Now;
             string ampm = now.Hour > 12 ? "AM" : "PM";
-            string loginUrl = $"{Constants.Api.BaseUrl}/Login?nocache={now.Month}%2F{now.Day}%2F{now.Year}%20{now.Hour}%3A{now.Minute}%3A{now.Second}%20{ampm}";
+            string loginUrl = $"{_apiConfig.BaseUrl}/Login?nocache={now.Month}%2F{now.Day}%2F{now.Year}%20{now.Hour}%3A{now.Minute}%3A{now.Second}%20{ampm}";
 
             using var request = new HttpRequestMessage(HttpMethod.Get, loginUrl);
             AddAuthHeaders(request, string.Empty, string.Empty);
@@ -59,16 +66,22 @@ public class ApiCall : IDisposable
             if (string.IsNullOrEmpty(responseBody))
             {
                 Logger.LogError("LoginAsync", $"Login failed for user: {username}", username);
-                return null;
+                throw new LoginFailedException(username, "Login request failed - no response received from server");
+            }
+
+            var loginResponse = JsonSerializer.Deserialize<LoginApiCall>(responseBody);
+            if (loginResponse == null)
+            {
+                throw new LoginFailedException(username, "Failed to deserialize login response");
             }
 
             Logger.LogInfo($"Login successful for user: {username}", username);
-            return JsonSerializer.Deserialize<LoginApiCall>(responseBody);
+            return loginResponse;
         }
 
         public async Task<FortsApiCall> FortsAsync(string latitude, string longitude, CancellationToken cancellationToken = default)
         {
-            string fortsUrl = $"{Constants.Api.BaseUrl}/Players/Forts";
+            string fortsUrl = $"{_apiConfig.BaseUrl}/Players/Forts";
 
             using var request = new HttpRequestMessage(HttpMethod.Post, fortsUrl);
             AddAuthHeaders(request, latitude, longitude);
@@ -77,15 +90,21 @@ public class ApiCall : IDisposable
             if (string.IsNullOrEmpty(responseBody))
             {
                 Logger.LogError("FortsAsync", $"Failed to retrieve forts at {latitude}, {longitude}", _username);
-                return null;
+                throw new QonqrApiException($"Failed to retrieve forts at {latitude}, {longitude}");
             }
 
-            return JsonSerializer.Deserialize<FortsApiCall>(responseBody);
+            var fortsResponse = JsonSerializer.Deserialize<FortsApiCall>(responseBody);
+            if (fortsResponse == null)
+            {
+                throw new QonqrApiException("Failed to deserialize forts response");
+            }
+
+            return fortsResponse;
         }
 
         public async Task<HarvestAll> HarvestAllAsync(string latitude, string longitude, CancellationToken cancellationToken = default)
         {
-            string harvestAllUrl = $"{Constants.Api.BaseUrl}/Forts/HarvestAll";
+            string harvestAllUrl = $"{_apiConfig.BaseUrl}/Forts/HarvestAll";
 
             using var request = new HttpRequestMessage(HttpMethod.Post, harvestAllUrl);
             AddAuthHeaders(request, latitude, longitude);
@@ -94,15 +113,21 @@ public class ApiCall : IDisposable
             if (string.IsNullOrEmpty(responseBody))
             {
                 Logger.LogError("HarvestAllAsync", "Failed to harvest all bases", _username);
-                return null;
+                throw new QonqrApiException("Failed to harvest all bases");
             }
 
-            return JsonSerializer.Deserialize<HarvestAll>(responseBody);
+            var harvestResponse = JsonSerializer.Deserialize<HarvestAll>(responseBody);
+            if (harvestResponse == null)
+            {
+                throw new QonqrApiException("Failed to deserialize harvest response");
+            }
+
+            return harvestResponse;
         }
 
         public async Task<LaunchApiCall> LaunchAsync(string latitude, string longitude, string zoneId, string formationId, CancellationToken cancellationToken = default)
         {
-            string launchUrl = $"{Constants.Api.BaseUrl}/Deployments/Launch";
+            string launchUrl = $"{_apiConfig.BaseUrl}/Deployments/Launch";
 
             using var request = new HttpRequestMessage(HttpMethod.Post, launchUrl);
             AddAuthHeaders(request, latitude, longitude);
@@ -114,11 +139,17 @@ public class ApiCall : IDisposable
             if (string.IsNullOrEmpty(responseBody))
             {
                 Logger.LogError("LaunchAsync", $"Failed to launch bots at zone {zoneId} with formation {formationId}", _username);
-                return null;
+                throw new QonqrApiException($"Failed to launch bots at zone {zoneId}");
+            }
+
+            var launchResponse = JsonSerializer.Deserialize<LaunchApiCall>(responseBody);
+            if (launchResponse == null)
+            {
+                throw new QonqrApiException("Failed to deserialize launch response");
             }
 
             Logger.LogInfo($"Successfully launched bots at zone {zoneId} with formation {formationId}", _username);
-            return JsonSerializer.Deserialize<LaunchApiCall>(responseBody);
+            return launchResponse;
         }
 
         internal async Task<ZonesPinsApiCall> ZonesPinsAsync(string latitude, string longitude, CancellationToken cancellationToken = default)
@@ -131,7 +162,7 @@ public class ApiCall : IDisposable
             DateTime now = DateTime.Now;
             string ampm = now.Hour <= 12 ? "AM" : "PM";
 
-            string zonesPinsUrl = $"{Constants.Api.BaseUrl}/Zones/Pins/{lat1}/{long1}/{lat2}/{long2}?nocache={now.Month}%2F{now.Day}%2F{now.Year}%20{now.Hour}%3A{now.Minute}%3A{now.Second}%20{ampm}";
+            string zonesPinsUrl = $"{_apiConfig.BaseUrl}/Zones/Pins/{lat1}/{long1}/{lat2}/{long2}?nocache={now.Month}%2F{now.Day}%2F{now.Year}%20{now.Hour}%3A{now.Minute}%3A{now.Second}%20{ampm}";
 
             using var request = new HttpRequestMessage(HttpMethod.Get, zonesPinsUrl);
             AddAuthHeaders(request, latitude, longitude);
@@ -140,10 +171,16 @@ public class ApiCall : IDisposable
             if (string.IsNullOrEmpty(responseBody))
             {
                 Logger.LogError("ZonesPinsAsync", $"Failed to scan zones at {latitude}, {longitude}", _username);
-                return null;
+                throw new QonqrApiException($"Failed to scan zones at {latitude}, {longitude}");
             }
 
-            return JsonSerializer.Deserialize<ZonesPinsApiCall>(responseBody);
+            var zonesResponse = JsonSerializer.Deserialize<ZonesPinsApiCall>(responseBody);
+            if (zonesResponse == null)
+            {
+                throw new QonqrApiException("Failed to deserialize zones response");
+            }
+
+            return zonesResponse;
         }
 
         /// <summary>
@@ -176,10 +213,9 @@ public class ApiCall : IDisposable
                 
                 if (!response.IsSuccessStatusCode)
                 {
-                    Logger.LogError("SendHttpRequestAsync", 
-                        $"HTTP {(int)response.StatusCode} {response.ReasonPhrase} for {request.Method} {request.RequestUri}", 
-                        _username);
-                    return string.Empty;
+                    var errorMessage = $"HTTP {(int)response.StatusCode} {response.ReasonPhrase} for {request.Method} {request.RequestUri}";
+                    Logger.LogError("SendHttpRequestAsync", errorMessage, _username);
+                    throw new QonqrApiException(errorMessage, (int)response.StatusCode, request.RequestUri?.ToString() ?? "unknown");
                 }
 
                 return await response.Content.ReadAsStringAsync(cancellationToken);
@@ -187,12 +223,12 @@ public class ApiCall : IDisposable
             catch (HttpRequestException ex)
             {
                 Logger.LogError("SendHttpRequestAsync", ex, _username);
-                return string.Empty;
+                throw new QonqrApiException("HTTP request failed", ex);
             }
             catch (OperationCanceledException)
             {
                 Logger.LogInfo("HTTP request was cancelled", _username);
-                return string.Empty;
+                throw new QonqrApiException("HTTP request was cancelled");
             }
         }
 

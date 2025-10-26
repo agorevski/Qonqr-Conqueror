@@ -8,7 +8,7 @@
     <Setting Name="password" Type="System.String" Scope="User">
       <Value Profile="(Default)" />
     </Setting>
-    <Setting Name="lattitude" Type="System.String" Scope="User">
+    <Setting Name="latitude" Type="System.String" Scope="User">
       <Value Profile="(Default)">47.6469383239746</Value>
     </Setting>
     <Setting Name="longitude" Type="System.String" Scope="User">

@@ -7,19 +7,28 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using Qonqr.Models;
 
 namespace Qonqr
 {
     public partial class ConquererForm : Form
     {
+        #region Constants
+
+        private const int LoginFormWidth = 338;
+        private const int LoginFormHeight = 128;
+        private const int MainFormWidth = 654;
+        private const int MainFormHeight = 534;
+
+        #endregion
+
         #region Variables
 
-        QonqrManager _qonqrManager;
-        bool _fullBaseExists = false;
-        bool _canHarvestBase = false;
-        bool _busy = false;
-        DateTime _lastLaunchTime = DateTime.MinValue;
-        bool _successfullyLoggedIn = false;
+        private readonly QonqrManager _qonqrManager;
+        private readonly StateManager _stateManager;
+        private bool _fullBaseExists = false;
+        private bool _canHarvestBase = false;
+        private DateTime _lastLaunchTime = DateTime.MinValue;
 
         #endregion
 
@@ -30,9 +39,13 @@ namespace Qonqr
             InitializeComponent();
 
             _qonqrManager = new QonqrManager();
+            _stateManager = new StateManager();
+            
+            // Subscribe to state changes
+            _stateManager.StateChanged += OnStateChanged;
 
             // load previous settings
-            if (decimal.TryParse(App.Default.lattitude, out decimal savedLat))
+            if (decimal.TryParse(App.Default.latitude, out decimal savedLat))
             {
                 lattitudeNumericUpDown.Value = savedLat;
             }
@@ -44,8 +57,8 @@ namespace Qonqr
             passwordTextBox.Text = App.Default.password;
 
             // only show login area
-            this.Width = 338;
-            this.Height = 128;
+            this.Width = LoginFormWidth;
+            this.Height = LoginFormHeight;
 
             // disable the UI areas that are not ready
             LockScreen();
@@ -80,8 +93,8 @@ namespace Qonqr
                     UpdateZoneDropDown();
                     
                     // grow screen
-                    this.Width = 654;
-                    this.Height = 534;
+                    this.Width = MainFormWidth;
+                    this.Height = MainFormHeight;
                 }
                 else
                 {
@@ -112,7 +125,7 @@ namespace Qonqr
         {
             _qonqrManager.ResetCoordinates();
 
-            if (decimal.TryParse(_qonqrManager.Lattitude, out decimal lat))
+            if (decimal.TryParse(_qonqrManager.Latitude, out decimal lat))
             {
                 lattitudeNumericUpDown.Value = lat;
             }
@@ -194,7 +207,7 @@ namespace Qonqr
 
             try
             {
-                _qonqrManager.Lattitude = lattitudeNumericUpDown.Value.ToString();
+                _qonqrManager.Latitude = lattitudeNumericUpDown.Value.ToString();
                 _qonqrManager.Longitude = longitudeNumericUpDown.Value.ToString();
 
                 bool successful = await _qonqrManager.ScanZonesAsync();
@@ -214,7 +227,7 @@ namespace Qonqr
         {
             // save settings
             App.Default.longitude = longitudeNumericUpDown.Value.ToString();
-            App.Default.lattitude = lattitudeNumericUpDown.Value.ToString();
+            App.Default.latitude = lattitudeNumericUpDown.Value.ToString();
             App.Default.Save();
 
             zoneComboBox.Items.Clear();
@@ -380,7 +393,7 @@ namespace Qonqr
                 {
                     QonqrManager.Zoneski fort = _qonqrManager.Forts[i];
 
-                    if (i < basesList.Count) // make sure we don't go over the label limit (we assume 20 is max fort count)
+                    if (i < basesList.Count) // make sure we don't go over the label limit
                     {
                         Label label = basesList[i];
 
