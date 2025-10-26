@@ -1,0 +1,308 @@
+# Qonqr-Conqueror Project Rules
+
+## Project Overview
+
+This is a Windows desktop application that automates gameplay actions for the mobile game QONQR. It manages multiple accounts simultaneously and provides automated resource management, zone scanning, and bot deployment capabilities.
+
+**⚠️ IMPORTANT**: This is automation software for a mobile game. Use of such tools may violate the game's Terms of Service. All code changes should be made with awareness of the ethical implications and potential consequences.
+
+## Technical Stack
+
+- **Framework**: .NET 8.0 with Windows Forms
+- **Target**: net8.0-windows (Windows desktop only)
+- **Language**: C# 12
+- **IDE**: Visual Studio 2022 or VS Code with C# extensions
+- **Root Namespace**: Qonqr
+- **Assembly Name**: Qonqr.exe
+- **Entry Point**: Qonqr.EntryPoint.Main()
+
+## Project Configuration
+
+- **Nullable Reference Types**: Disabled (Nullable=disable)
+- **Implicit Usings**: Enabled
+- **Suppressed Warnings**: CS8600, CS8601, CS8602, CS8603, CS8604 (nullable-related)
+- **Configuration File**: `QonqrConqueror/Resources/accounts.txt` (contains sensitive credentials)
+
+## Architecture & Patterns
+
+### Service-Oriented Architecture
+
+The application follows a layered architecture with clear separation of concerns:
+
+1. **Forms Layer** (`Forms/`)
+   - Windows Forms UI components
+   - User interaction handling
+   - Event-driven design
+   - `ConquererForm.cs` - Main application window
+   - `ProgressForm.cs` - Progress tracking dialogs
+
+2. **Services Layer** (`Services/`)
+   - Business logic and orchestration
+   - `QonqrManager.cs` - Main service coordinator (handles accounts, zones, harvesting, launching)
+   - `ApiCall.cs` - QONQR API client (HTTP communication)
+
+3. **Models Layer** (`Models/`)
+   - Data transfer objects
+   - `Player.cs` - Player account model
+   - `Coordinate.cs` - GPS coordinate model
+   - `QOM.cs` - QONQR Object Model (API responses)
+   - `ApplicationState.cs` - Application state management
+
+4. **Configuration Layer** (`Configuration/`)
+   - `ApiConfiguration.cs` - API endpoint configuration
+   - `ConfigFile.cs` - Parses accounts.txt file
+
+5. **Utilities Layer** (`Utilities/`)
+   - Helper functions and constants
+   - `Logger.cs` - File-based logging to Logs/ directory
+   - `ResourceCalculator.cs` - Resource regeneration calculations
+   - `Constants.cs` - Application-wide constants
+
+6. **Exceptions Layer** (`Exceptions/`)
+   - Custom exception types
+   - `QonqrException.cs` - Base exception for QONQR-specific errors
+   - Includes specialized exceptions like `LoginFailedException`, `QonqrApiException`
+
+## Code Style Guidelines
+
+### C# Conventions
+
+- Use **PascalCase** for class names, method names, properties
+- Use **camelCase** for local variables and method parameters
+- Use **_camelCase** (underscore prefix) for private fields
+- Place opening braces on new lines (Allman style)
+- Use explicit access modifiers (public, private, protected)
+- Organize members with #region directives where appropriate
+
+### Namespace Structure
+
+- Root namespace is `Qonqr` (not `QonqrConqueror`)
+- All files should be in the `Qonqr` namespace or sub-namespaces
+- Avoid deeply nested namespaces
+
+### Async/Await Patterns
+
+- Asynchronous methods should end with `Async` suffix
+- Always accept `CancellationToken cancellationToken = default` parameter
+- Use try-catch blocks and log exceptions via `Logger.LogError()`
+- Return `Task<bool>` for operations that can fail (true = success, false = failure)
+
+Example:
+
+```csharp
+public async Task<bool> PerformOperationAsync(CancellationToken cancellationToken = default)
+{
+    try
+    {
+        // Implementation
+        return true;
+    }
+    catch (QonqrApiException ex)
+    {
+        Logger.LogError("PerformOperationAsync", ex, "system");
+        return false;
+    }
+}
+```
+
+### Error Handling
+
+- Use custom exception types (`QonqrException` hierarchy)
+- Always log errors using `Logger.LogError(methodName, exception, username/system)`
+- Return bool success indicators rather than throwing exceptions in service layer
+- Show user-friendly error messages in UI layer
+- Global exception handling is configured in `EntryPoint.cs`
+
+## File Locations & Important Files
+
+### Configuration Files
+
+- **`accounts.txt`**: Located in `QonqrConqueror/Resources/`, contains account credentials
+  - Format: `username,password,deviceId,latitude,longitude`
+  - Copied to output directory during build
+  - **NEVER commit with real credentials**
+
+### Output & Logs
+
+- Build output: `QonqrConqueror/bin/{Configuration}/net8.0-windows/`
+- Log files: `Logs/` directory (created at runtime)
+- Executable: `Qonqr.exe`
+
+### Forms
+
+- All forms must inherit from `System.Windows.Forms.Form`
+- Forms have `.Designer.cs` files for UI designer code
+- Forms have `.resx` files for resources
+
+## API Integration
+
+### QonqrManager Service
+
+The central service that coordinates all operations:
+
+- Manages multiple player accounts
+- Handles login, zone scanning, harvesting, bot launching
+- Maintains state for statistics, zones, forts, and launches
+- All API calls go through this service
+
+### API Call Patterns
+
+- All API operations are async
+- Accept cancellation tokens
+- Return strongly-typed response objects (e.g., `LoginApiCall`, `FortsApiCall`)
+- Throw `QonqrApiException` on failures
+
+### Coordinate Handling
+
+- Default coordinates defined in `Constants.DefaultCoordinates`
+- Each player account has individual coordinates
+- GPS coordinates must be valid: latitude (-90 to 90), longitude (-180 to 180)
+
+## Multi-Account Management
+
+### Account Loading
+
+- Accounts loaded from `accounts.txt` via `ConfigFile.GetAccounts()`
+- All accounts are logged in simultaneously during startup
+- Each account maintains separate state (level, faction, forts, resources)
+
+### Account Properties
+
+- Username, Password, DeviceId (for authentication)
+- Latitude, Longitude (GPS location)
+- Level, Faction (populated after login)
+- Forts (list of player bases)
+- SessionHarvestTotal (tracks earnings)
+
+## Automation Features
+
+### Timers
+
+- **10-minute timer**: Auto-harvest checks (when enabled)
+- **1-second timer**: Real-time resource regeneration display
+
+### Auto-Harvest
+
+- Triggers when any base reaches 10,000 gas
+- Collects resources from all bases
+- Updates credits and statistics
+
+### Auto-Launch
+
+- Triggers when both bots and energy reach maximum capacity
+- Selects attack formation based on player level:
+  - Level 1-24: Zone Assault 1
+  - Level 25-49: Shockwave 1
+  - Level 50-74: Shockwave 2
+  - Level 75-99: Shockwave 3
+  - Level 100+: Shockwave 4
+
+## Testing Approach
+
+### Current State
+
+- No automated unit tests or integration tests
+- Testing is performed manually through the UI
+- Consider adding tests for:
+  - `ResourceCalculator` logic
+  - `ConfigFile` parsing
+  - `QonqrManager` with mocked APIs
+  - Integration tests for complete workflows
+
+### Manual Testing Checklist
+
+When making changes, verify:
+
+- Login succeeds with valid credentials
+- Statistics display correctly
+- Bases load with correct faction colors
+- Zone scanning discovers zones
+- Harvesting collects resources
+- Bot launching deploys successfully
+- Auto-features trigger at correct times
+- Resource calculations are accurate
+
+## Security & Sensitive Data
+
+### Credentials Management
+
+- **NEVER commit real credentials** to version control
+- `accounts.txt` should be in `.gitignore`
+- DeviceId is Base64-encoded for authentication
+- Passwords are sent in plain text to API (limitation of QONQR API)
+
+### Logging
+
+- Logs may contain sensitive information
+- Ensure `Logs/` directory is in `.gitignore`
+- Review logs before sharing
+
+## Build & Deployment
+
+### Building
+
+```cmd
+dotnet restore
+dotnet build QonqrConqueror.sln --configuration Release
+```
+
+### Running
+
+```cmd
+dotnet run --project QonqrConqueror\QonqrConqueror.csproj
+```
+
+### Prerequisites
+
+- Windows 10 or Windows 11
+- .NET 8.0 SDK installed
+- Valid QONQR account credentials
+
+## Common Tasks
+
+### Adding New API Endpoints
+
+1. Add response model classes to `Models/QOM.cs`
+2. Add API method to `Services/ApiCall.cs`
+3. Add orchestration method to `Services/QonqrManager.cs`
+4. Update UI in `Forms/ConquererForm.cs` if needed
+
+### Adding New Constants
+
+- Add to `Utilities/Constants.cs`
+- Use nested static classes for organization
+- Example: `Constants.ZoneControlStates.Legion`
+
+### Adding New UI Features
+
+1. Update form designer in `.Designer.cs`
+2. Add event handlers in form code-behind
+3. Call service layer methods from event handlers
+4. Update UI based on service responses
+
+### Logging
+
+Always log errors with context:
+
+```csharp
+Logger.LogError(methodName, exception, username or "system");
+```
+
+## Code Review Checklist
+
+- [ ] Follows C# naming conventions
+- [ ] Uses async/await with CancellationToken
+- [ ] Has proper error handling with try-catch
+- [ ] Logs errors appropriately
+- [ ] No hardcoded credentials or sensitive data
+- [ ] Comments explain complex logic
+- [ ] UI updates happen on UI thread
+- [ ] Resources are properly disposed
+- [ ] API calls are in service layer, not UI layer
+
+## Warnings & Disclaimers
+
+- This software automates gameplay and may violate QONQR Terms of Service
+- Use at your own risk
+- Authors accept no responsibility for account actions
+- Consider ethical implications of automation in online games
